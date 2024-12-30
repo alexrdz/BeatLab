@@ -5,13 +5,33 @@ class Sequencer {
         this.currentStep = 0;
         this.samples = new Array(4).fill(null);
         this.grid = Array(4).fill().map(() => Array(8).fill(false));
-        
+
         // Initialize Tone.js
         Tone.Transport.bpm.value = this.bpm;
         this.players = Array(4).fill(null);
-        
+
+        // Initialize effects
+        this.reverb = new Tone.Reverb({
+            decay: 1.5,
+            wet: 0.3
+        }).toDestination();
+
+        this.delay = new Tone.FeedbackDelay({
+            delayTime: 0.25,
+            feedback: 0.3,
+            wet: 0.3
+        }).toDestination();
+
+        // Main output channel
+        this.mainChannel = new Tone.Channel().toDestination();
+
+        // Effects are initially bypassed
+        this.reverb.wet.value = 0;
+        this.delay.wet.value = 0;
+
         this.initializeUI();
         this.setupEventListeners();
+        this.setupEffectEventListeners();
     }
 
     initializeUI() {
@@ -55,6 +75,57 @@ class Sequencer {
         }
     }
 
+    setupEffectEventListeners() {
+        // Reverb controls
+        document.getElementById('reverbToggle').addEventListener('change', (e) => {
+            this.reverb.wet.value = e.target.checked ? 
+                document.getElementById('reverbMix').value : 0;
+        });
+
+        document.getElementById('reverbDecay').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            this.reverb.decay = value;
+            document.getElementById('reverbDecayValue').textContent = value.toFixed(1) + 's';
+        });
+
+        document.getElementById('reverbMix').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (document.getElementById('reverbToggle').checked) {
+                this.reverb.wet.value = value;
+            }
+            document.getElementById('reverbMixValue').textContent = 
+                Math.round(value * 100) + '%';
+        });
+
+        // Delay controls
+        document.getElementById('delayToggle').addEventListener('change', (e) => {
+            this.delay.wet.value = e.target.checked ? 
+                document.getElementById('delayMix').value : 0;
+        });
+
+        document.getElementById('delayTime').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            this.delay.delayTime.value = value;
+            document.getElementById('delayTimeValue').textContent = value.toFixed(2) + 's';
+        });
+
+        document.getElementById('delayFeedback').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            this.delay.feedback.value = value;
+            document.getElementById('delayFeedbackValue').textContent = 
+                Math.round(value * 100) + '%';
+        });
+
+        document.getElementById('delayMix').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (document.getElementById('delayToggle').checked) {
+                this.delay.wet.value = value;
+            }
+            document.getElementById('delayMixValue').textContent = 
+                Math.round(value * 100) + '%';
+        });
+    }
+
     setupEventListeners() {
         // Transport controls
         document.getElementById('playButton').addEventListener('click', () => this.togglePlay());
@@ -67,7 +138,7 @@ class Sequencer {
             document.getElementById('bpmValue').textContent = this.bpm;
             Tone.Transport.bpm.value = this.bpm;
         });
-
+        
         // Step buttons
         document.querySelectorAll('.step-button').forEach(button => {
             button.addEventListener('click', () => {
@@ -77,18 +148,18 @@ class Sequencer {
                 button.classList.toggle('active');
             });
         });
-
+        
         // Sample slots
         document.querySelectorAll('.drag-area').forEach(area => {
             area.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 area.classList.add('drag-over');
             });
-
+            
             area.addEventListener('dragleave', () => {
                 area.classList.remove('drag-over');
             });
-
+            
             area.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 area.classList.remove('drag-over');
@@ -96,12 +167,12 @@ class Sequencer {
                 const file = e.dataTransfer.files[0];
                 await this.loadSample(slot, file);
             });
-
+            
             area.addEventListener('click', () => {
                 const input = area.querySelector('input[type="file"]');
                 input.click();
             });
-
+            
             const input = area.querySelector('input[type="file"]');
             input.addEventListener('change', async (e) => {
                 const slot = parseInt(area.dataset.slot);
@@ -109,7 +180,7 @@ class Sequencer {
                 await this.loadSample(slot, file);
             });
         });
-
+        
         // Volume controls
         document.querySelectorAll('.volume-control').forEach(control => {
             control.addEventListener('input', (e) => {
@@ -122,7 +193,7 @@ class Sequencer {
                 label.textContent = `${Math.round(volume * 100)}%`;
             });
         });
-
+        
         // Preview buttons
         document.querySelectorAll('.preview-btn').forEach(button => {
             button.addEventListener('click', () => {
@@ -133,7 +204,7 @@ class Sequencer {
             });
         });
     }
-
+    
     async loadSample(slot, file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -143,7 +214,10 @@ class Sequencer {
                 this.players[slot].disconnect();
             }
             
-            this.players[slot] = new Tone.Player(audioBuffer).toDestination();
+            // Create new player and connect through effects chain
+            this.players[slot] = new Tone.Player(audioBuffer);
+            this.players[slot].chain(this.delay, this.reverb, this.mainChannel);
+            
             this.samples[slot] = file.name;
             
             // Update UI
@@ -153,7 +227,7 @@ class Sequencer {
             console.error('Error loading sample:', error);
         }
     }
-
+    
     togglePlay() {
         if (this.playing) {
             this.stop();
@@ -161,7 +235,7 @@ class Sequencer {
             this.play();
         }
     }
-
+    
     play() {
         this.playing = true;
         document.getElementById('playButton').innerHTML = '<i class="bi bi-pause-fill"></i> Pause';
@@ -174,7 +248,7 @@ class Sequencer {
             Tone.Transport.start();
         }
     }
-
+    
     stop() {
         this.playing = false;
         document.getElementById('playButton').innerHTML = '<i class="bi bi-play-fill"></i> Play';
@@ -182,7 +256,7 @@ class Sequencer {
         Tone.Transport.stop();
         this.updateStepIndicators();
     }
-
+    
     playStep(time) {
         // Update visual indication
         this.updateStepIndicators();
@@ -196,7 +270,7 @@ class Sequencer {
         
         this.currentStep = (this.currentStep + 1) % 8;
     }
-
+    
     updateStepIndicators() {
         document.querySelectorAll('.step-button').forEach(button => {
             button.classList.remove('current');
