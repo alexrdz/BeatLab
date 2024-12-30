@@ -216,12 +216,20 @@ class Sequencer {
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
 
+            // Stop and clean up the old player if it exists
             if (this.players[slot]) {
+                if (this.players[slot].state === 'started') {
+                    this.players[slot].stop();
+                }
                 this.players[slot].disconnect();
+                this.players[slot].dispose();
             }
 
             // Create new player and connect through effects chain
-            this.players[slot] = new Tone.Player(audioBuffer);
+            this.players[slot] = new Tone.Player({
+                url: audioBuffer,
+                loop: false // Ensure samples don't loop by default
+            });
             this.players[slot].chain(this.delay, this.reverb, this.mainChannel);
 
             this.samples[slot] = file.name;
@@ -229,6 +237,12 @@ class Sequencer {
             // Update UI
             const dragArea = document.querySelector(`.drag-area[data-slot="${slot}"]`);
             dragArea.textContent = file.name;
+
+            // Reset preview button state
+            const previewBtn = document.querySelector(`.preview-btn[data-slot="${slot}"]`);
+            if (previewBtn) {
+                previewBtn.innerHTML = '<i class="bi bi-play-fill"></i> Preview';
+            }
         } catch (error) {
             console.error('Error loading sample:', error);
         }
@@ -260,6 +274,19 @@ class Sequencer {
         document.getElementById('playButton').innerHTML = '<i class="bi bi-play-fill"></i> Play';
         this.currentStep = 0;
         Tone.Transport.stop();
+
+        // Stop all currently playing samples
+        this.players.forEach((player, index) => {
+            if (player && player.state === 'started') {
+                player.stop();
+                // Reset preview button state if it was in "Stop" mode
+                const previewBtn = document.querySelector(`.preview-btn[data-slot="${index}"]`);
+                if (previewBtn) {
+                    previewBtn.innerHTML = '<i class="bi bi-play-fill"></i> Preview';
+                }
+            }
+        });
+
         this.updateStepIndicators();
     }
 
@@ -270,6 +297,10 @@ class Sequencer {
         // Play active samples
         for (let row = 0; row < 4; row++) {
             if (this.grid[row][this.currentStep] && this.players[row]) {
+                // Stop any currently playing instance of this sample
+                if (this.players[row].state === 'started') {
+                    this.players[row].stop();
+                }
                 this.players[row].start(time);
             }
         }
