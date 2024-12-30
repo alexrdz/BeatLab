@@ -59,3 +59,34 @@
     border-color: var(--bs-info);
     background: rgba(var(--bs-info-rgb), 0.1);
 }
+
+.preset-samples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.preset-sample {
+    background: var(--bs-dark);
+    border: 1px solid var(--bs-secondary);
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: move;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.preset-sample:hover {
+    background: var(--bs-secondary);
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--bs-secondary);
+    color: var(--bs-light);
+}
+
+.accordion-button:focus {
+    border-color: var(--bs-secondary);
+    box-shadow: none;
+}

@@ -32,6 +32,66 @@ class Sequencer {
         this.initializeUI();
         this.setupEventListeners();
         this.setupEffectEventListeners();
+        this.loadPresets();
+    }
+
+    async loadPresets() {
+        try {
+            const response = await fetch('/presets');
+            const presets = await response.json();
+            this.displayPresets(presets);
+        } catch (error) {
+            console.error('Error loading presets:', error);
+        }
+    }
+
+    displayPresets(presets) {
+        const presetLibrary = document.getElementById('presetLibrary');
+
+        Object.entries(presets).forEach(([category, samples], index) => {
+            const accordionItem = document.createElement('div');
+            accordionItem.className = 'accordion-item';
+
+            const headerId = `heading${category}`;
+            const collapseId = `collapse${category}`;
+
+            accordionItem.innerHTML = `
+                <h2 class="accordion-header" id="${headerId}">
+                    <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" 
+                            type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#${collapseId}">
+                        ${category.charAt(0).toUpperCase() + category.slice(1)}
+                    </button>
+                </h2>
+                <div id="${collapseId}" 
+                     class="accordion-collapse collapse ${index === 0 ? 'show' : ''}"
+                     data-bs-parent="#presetLibrary">
+                    <div class="accordion-body">
+                        <div class="preset-samples">
+                            ${samples.map(sample => `
+                                <div class="preset-sample" 
+                                     draggable="true" 
+                                     data-category="${category}"
+                                     data-sample="${sample}">
+                                    ${sample.replace(/\.[^/.]+$/, "")}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            presetLibrary.appendChild(accordionItem);
+        });
+
+        // Add drag event listeners to preset samples
+        document.querySelectorAll('.preset-sample').forEach(sample => {
+            sample.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('category', sample.dataset.category);
+                e.dataTransfer.setData('sample', sample.dataset.sample);
+            });
+        });
     }
 
     initializeUI() {
@@ -164,8 +224,17 @@ class Sequencer {
                 e.preventDefault();
                 area.classList.remove('drag-over');
                 const slot = parseInt(area.dataset.slot);
-                const file = e.dataTransfer.files[0];
-                await this.loadSample(slot, file);
+
+                const category = e.dataTransfer.getData('category');
+                const sample = e.dataTransfer.getData('sample');
+
+                if (category && sample) {
+                    // Load preset sample
+                    await this.loadPresetSample(slot, category, sample);
+                } else if (e.dataTransfer.files.length > 0) {
+                    // Load user file
+                    await this.loadSample(slot, e.dataTransfer.files[0]);
+                }
             });
 
             area.addEventListener('click', () => {
@@ -248,6 +317,44 @@ class Sequencer {
         }
     }
 
+    async loadPresetSample(slot, category, filename) {
+        try {
+            const response = await fetch(`/static/samples/${category}/${filename}`);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
+
+            // Stop and clean up the old player if it exists
+            if (this.players[slot]) {
+                if (this.players[slot].state === 'started') {
+                    this.players[slot].stop();
+                }
+                this.players[slot].disconnect();
+                this.players[slot].dispose();
+            }
+
+            // Create new player and connect through effects chain
+            this.players[slot] = new Tone.Player({
+                url: audioBuffer,
+                loop: false
+            });
+            this.players[slot].chain(this.delay, this.reverb, this.mainChannel);
+
+            this.samples[slot] = filename;
+
+            // Update UI
+            const dragArea = document.querySelector(`.drag-area[data-slot="${slot}"]`);
+            dragArea.textContent = filename;
+
+            // Reset preview button state
+            const previewBtn = document.querySelector(`.preview-btn[data-slot="${slot}"]`);
+            if (previewBtn) {
+                previewBtn.innerHTML = '<i class="bi bi-play-fill"></i> Preview';
+            }
+        } catch (error) {
+            console.error('Error loading preset sample:', error);
+        }
+    }
+
     togglePlay() {
         if (this.playing) {
             this.stop();
@@ -320,6 +427,11 @@ class Sequencer {
 
 // Initialize after DOM content is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Bootstrap JS
+    const scriptElement = document.createElement('script');
+    scriptElement.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js';
+    document.body.appendChild(scriptElement);
+
     // Initialize Tone.js
     Tone.start();
 
