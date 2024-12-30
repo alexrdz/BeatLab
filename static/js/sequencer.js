@@ -62,7 +62,7 @@ class Sequencer {
         for (let row = 0; row < 4; row++) {
             const stepRow = document.createElement('div');
             stepRow.className = 'step-row';
-            
+
             for (let step = 0; step < 8; step++) {
                 const button = document.createElement('button');
                 button.className = 'step-button';
@@ -70,7 +70,7 @@ class Sequencer {
                 button.dataset.step = step;
                 stepRow.appendChild(button);
             }
-            
+
             gridContainer.appendChild(stepRow);
         }
     }
@@ -78,7 +78,7 @@ class Sequencer {
     setupEffectEventListeners() {
         // Reverb controls
         document.getElementById('reverbToggle').addEventListener('change', (e) => {
-            this.reverb.wet.value = e.target.checked ? 
+            this.reverb.wet.value = e.target.checked ?
                 document.getElementById('reverbMix').value : 0;
         });
 
@@ -93,13 +93,13 @@ class Sequencer {
             if (document.getElementById('reverbToggle').checked) {
                 this.reverb.wet.value = value;
             }
-            document.getElementById('reverbMixValue').textContent = 
+            document.getElementById('reverbMixValue').textContent =
                 Math.round(value * 100) + '%';
         });
 
         // Delay controls
         document.getElementById('delayToggle').addEventListener('change', (e) => {
-            this.delay.wet.value = e.target.checked ? 
+            this.delay.wet.value = e.target.checked ?
                 document.getElementById('delayMix').value : 0;
         });
 
@@ -112,7 +112,7 @@ class Sequencer {
         document.getElementById('delayFeedback').addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
             this.delay.feedback.value = value;
-            document.getElementById('delayFeedbackValue').textContent = 
+            document.getElementById('delayFeedbackValue').textContent =
                 Math.round(value * 100) + '%';
         });
 
@@ -121,7 +121,7 @@ class Sequencer {
             if (document.getElementById('delayToggle').checked) {
                 this.delay.wet.value = value;
             }
-            document.getElementById('delayMixValue').textContent = 
+            document.getElementById('delayMixValue').textContent =
                 Math.round(value * 100) + '%';
         });
     }
@@ -130,7 +130,7 @@ class Sequencer {
         // Transport controls
         document.getElementById('playButton').addEventListener('click', () => this.togglePlay());
         document.getElementById('stopButton').addEventListener('click', () => this.stop());
-        
+
         // BPM control
         const bpmControl = document.getElementById('bpmControl');
         bpmControl.addEventListener('input', (e) => {
@@ -138,7 +138,7 @@ class Sequencer {
             document.getElementById('bpmValue').textContent = this.bpm;
             Tone.Transport.bpm.value = this.bpm;
         });
-        
+
         // Step buttons
         document.querySelectorAll('.step-button').forEach(button => {
             button.addEventListener('click', () => {
@@ -148,18 +148,18 @@ class Sequencer {
                 button.classList.toggle('active');
             });
         });
-        
+
         // Sample slots
         document.querySelectorAll('.drag-area').forEach(area => {
             area.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 area.classList.add('drag-over');
             });
-            
+
             area.addEventListener('dragleave', () => {
                 area.classList.remove('drag-over');
             });
-            
+
             area.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 area.classList.remove('drag-over');
@@ -167,12 +167,12 @@ class Sequencer {
                 const file = e.dataTransfer.files[0];
                 await this.loadSample(slot, file);
             });
-            
+
             area.addEventListener('click', () => {
                 const input = area.querySelector('input[type="file"]');
                 input.click();
             });
-            
+
             const input = area.querySelector('input[type="file"]');
             input.addEventListener('change', async (e) => {
                 const slot = parseInt(area.dataset.slot);
@@ -180,7 +180,7 @@ class Sequencer {
                 await this.loadSample(slot, file);
             });
         });
-        
+
         // Volume controls
         document.querySelectorAll('.volume-control').forEach(control => {
             control.addEventListener('input', (e) => {
@@ -193,33 +193,39 @@ class Sequencer {
                 label.textContent = `${Math.round(volume * 100)}%`;
             });
         });
-        
+
         // Preview buttons
         document.querySelectorAll('.preview-btn').forEach(button => {
             button.addEventListener('click', () => {
                 const slot = parseInt(button.dataset.slot);
                 if (this.players[slot]) {
-                    this.players[slot].start();
+                    if (this.players[slot].state === 'started') {
+                        this.players[slot].stop();
+                        button.innerHTML = '<i class="bi bi-play-fill"></i> Preview';
+                    } else {
+                        this.players[slot].start();
+                        button.innerHTML = '<i class="bi bi-stop-fill"></i> Stop';
+                    }
                 }
             });
         });
     }
-    
+
     async loadSample(slot, file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
-            
+
             if (this.players[slot]) {
                 this.players[slot].disconnect();
             }
-            
+
             // Create new player and connect through effects chain
             this.players[slot] = new Tone.Player(audioBuffer);
             this.players[slot].chain(this.delay, this.reverb, this.mainChannel);
-            
+
             this.samples[slot] = file.name;
-            
+
             // Update UI
             const dragArea = document.querySelector(`.drag-area[data-slot="${slot}"]`);
             dragArea.textContent = file.name;
@@ -227,7 +233,7 @@ class Sequencer {
             console.error('Error loading sample:', error);
         }
     }
-    
+
     togglePlay() {
         if (this.playing) {
             this.stop();
@@ -235,20 +241,20 @@ class Sequencer {
             this.play();
         }
     }
-    
+
     play() {
         this.playing = true;
         document.getElementById('playButton').innerHTML = '<i class="bi bi-pause-fill"></i> Pause';
-        
+
         if (Tone.Transport.state !== 'started') {
             Tone.Transport.scheduleRepeat((time) => {
                 this.playStep(time);
             }, '8n');
-            
+
             Tone.Transport.start();
         }
     }
-    
+
     stop() {
         this.playing = false;
         document.getElementById('playButton').innerHTML = '<i class="bi bi-play-fill"></i> Play';
@@ -256,21 +262,21 @@ class Sequencer {
         Tone.Transport.stop();
         this.updateStepIndicators();
     }
-    
+
     playStep(time) {
         // Update visual indication
         this.updateStepIndicators();
-        
+
         // Play active samples
         for (let row = 0; row < 4; row++) {
             if (this.grid[row][this.currentStep] && this.players[row]) {
                 this.players[row].start(time);
             }
         }
-        
+
         this.currentStep = (this.currentStep + 1) % 8;
     }
-    
+
     updateStepIndicators() {
         document.querySelectorAll('.step-button').forEach(button => {
             button.classList.remove('current');
@@ -285,7 +291,7 @@ class Sequencer {
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize Tone.js
     Tone.start();
-    
+
     // Create sequencer instance
     const sequencer = new Sequencer();
 });
